@@ -125,9 +125,10 @@ main(int argC, char** argV)
             case SelectionRequest:
                 sev = (XSelectionRequestEvent*)&ev.xselectionrequest;
                 printf("Requestor: 0x%lx\n", sev->requestor);
+                prop = None;
                 /* Property is set to None by "obsolete" clients. */
                 if ((sev->target != utf8 && sev->target != png && sev->target != tgts) || sev->property == None) {
-                    prop = send_no(dpy, sev);
+                    send_no(dpy, sev);
                 } else if (sev->target == utf8) {
                     prop = send_img(dpy, sev, utf8, url, strlen(url));
                 } else if (sev->target == png) {
