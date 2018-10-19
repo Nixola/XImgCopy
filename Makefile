@@ -8,3 +8,9 @@ default:
 debug: CFLAGS += -g
 debug: 
 	$(CC) $(CFLAGS) main.c -o ximgcopy
+
+homeInstall: default
+homeInstall:
+	cp ximgcopy ~/bin/
+
+install: homeInstall
