@@ -60,13 +60,14 @@ send_img(Display *dpy, XSelectionRequestEvent *sev, Atom type, char *data, size_
 int
 main(int argC, char** argV)
 {
+    const int maxSize = 1024*1024;
     Display *dpy;
     Window owner, root;
     int screen;
     Atom sel, utf8, png, tgts;
     XEvent ev;
     XSelectionRequestEvent *sev;
-    char img[256*1024];
+    char img[maxSize];
     char *url;
     size_t bytes;
 
@@ -77,13 +78,13 @@ main(int argC, char** argV)
 
     url = argV[1];
     freopen(NULL, "rb", stdin);
-    bytes = fread(img, sizeof(char), 256*1024 - 1, stdin);
+    bytes = fread(img, sizeof(char), maxSize - 1, stdin);
     if (ferror(stdin)) {
         printf("Error when reading image from stdin.\n");
         return -2;
     }
     if (!feof(stdin)) {
-        printf("It's not over, is it? (files >= 256 KiB aren't supported yet)\n");
+        printf("It's not over, is it? (files >= %d KiB aren't supported yet)\n", maxSize / 1024);
         return -3;
     }
     printf("Read %lu bytes.\n", bytes);
