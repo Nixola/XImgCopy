@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include <time.h>
 #include <X11/Xlib.h>
 
@@ -60,35 +61,20 @@ send_img(Display *dpy, XSelectionRequestEvent *sev, Atom type, char *data, size_
 int
 main(int argC, char** argV)
 {
-    const int maxSize = 1024*1024;
     Display *dpy;
     Window owner, root;
-    int screen;
+    int screen, incr = 0;
     Atom sel, utf8, png, tgts;
     XEvent ev;
     XSelectionRequestEvent *sev;
-    char img[maxSize];
-    char *url;
-    size_t bytes;
+    char *img, *url;
+    size_t readBytes = 0, bufSize, bufOffset;
+    long maxRequestSize;
 
     if (argC != 2) {
         printf("Usage: cat file.png | %s URL\n", argV[0]);
         return -1;
     }
-
-    url = argV[1];
-    freopen(NULL, "rb", stdin);
-    bytes = fread(img, sizeof(char), maxSize - 1, stdin);
-    if (ferror(stdin)) {
-        printf("Error when reading image from stdin.\n");
-        return -2;
-    }
-    if (!feof(stdin)) {
-        printf("It's not over, is it? (files >= %d KiB aren't supported yet)\n", maxSize / 1024);
-        return -3;
-    }
-    printf("Read %lu bytes.\n", bytes);
-    img[bytes] = '\0';
 
     dpy = XOpenDisplay(NULL);
     if (!dpy)
@@ -96,6 +82,46 @@ main(int argC, char** argV)
         fprintf(stderr, "Could not open X display\n");
         return 1;
     }
+    /*
+     * XMaxRequestSize returns the maximum request sizes, in 4-byte units.
+     * I want to avoid exceeding the max request size with the buffer,
+     * and without knowing the size of the rest of the request I'm just
+     * using 75% of the max size.
+    */
+    maxRequestSize = XMaxRequestSize(dpy) * 3; 
+
+    bufSize = maxRequestSize;
+    bufOffset = 0;
+
+    url = argV[1];
+
+    freopen(NULL, "rb", stdin);
+    img = malloc(bufSize);
+    while (!ferror(stdin) && !feof(stdin)) {
+        readBytes += fread(img + bufOffset, sizeof(char), bufSize - bufOffset, stdin);
+        if (!feof(stdin)) {
+            bufOffset = bufSize;
+            bufSize *= 2;
+            incr = 1;
+            img = realloc(img, bufSize);
+        }
+    }
+
+    if (ferror(stdin)) {
+        printf("Error when reading image from stdin.\n");
+        return -2;
+    }
+
+    if (!feof(stdin)) {
+        printf("Wait, how'd this happen?\n");
+        return -3;
+    }
+
+    if (incr) {
+        printf("This should be sent incrementally. Not doing that yet.\n");
+    }
+
+    printf("Read %lu bytes.\n", readBytes);
 
     screen = DefaultScreen(dpy);
     root = RootWindow(dpy, screen);
@@ -127,13 +153,13 @@ main(int argC, char** argV)
                 sev = (XSelectionRequestEvent*)&ev.xselectionrequest;
                 printf("Requestor: 0x%lx\n", sev->requestor);
                 prop = None;
-                /* Property is set to None by "obsolete" clients. */
+                /* Property is set to None by "obsolete" clients, or to an unsupported atom. */
                 if ((sev->target != utf8 && sev->target != png && sev->target != tgts) || sev->property == None) {
                     send_no(dpy, sev);
                 } else if (sev->target == utf8) {
                     prop = send_img(dpy, sev, utf8, url, strlen(url));
                 } else if (sev->target == png) {
-                    prop = send_img(dpy, sev, png, img, bytes);
+                    prop = send_img(dpy, sev, png, img, readBytes);
                 } else if (sev->target == tgts) {
                     prop = send_targets(dpy, sev, tgts);
                 }
