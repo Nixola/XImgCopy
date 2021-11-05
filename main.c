@@ -64,7 +64,7 @@ main(int argC, char** argV)
     Display *dpy;
     Window owner, root;
     int screen;
-    Atom sel, utf8, png, tgts;
+    Atom sel, utf8, png, tgts, atom;
     XEvent ev;
     XSelectionRequestEvent *sev;
     char img[maxSize];
@@ -108,6 +108,7 @@ main(int argC, char** argV)
     utf8 = XInternAtom(dpy, "UTF8_STRING", False);
     png = XInternAtom(dpy, "image/png", False);
     tgts = XInternAtom(dpy, "TARGETS", False);
+    atom = XInternAtom(dpy, "ATOM", False);
 
     /* Claim ownership of the clipboard. */
     XSetSelectionOwner(dpy, sel, owner, CurrentTime);
@@ -135,7 +136,7 @@ main(int argC, char** argV)
                 } else if (sev->target == png) {
                     prop = send_img(dpy, sev, png, img, bytes);
                 } else if (sev->target == tgts) {
-                    prop = send_targets(dpy, sev, tgts);
+                    prop = send_targets(dpy, sev, atom);
                 }
                 ssev.property = prop;
                 ssev.type = SelectionNotify;
