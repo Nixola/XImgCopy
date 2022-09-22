@@ -1,8 +1,8 @@
 # XImgCopy
-Little tool to copy an URL and an image to the X clipboard at the same time.
+Little tool to copy an image and a string (possibly an URL to the same image) to the X clipboard at the same time. It exposes two targets, `UTF8_STRING` and `image/png`.
 
 ## Usage
-`cat file.png | ximgcopy URL & disown`
+`ximgcopy URL < file.png`
 
 ## To do
 - [ ] Add a command line option to choose selection
