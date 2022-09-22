@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-Wall -Wextra -Wpedantic -Werror -lX11
+CFLAGS=-Wall -Wextra -Wpedantic -Werror -lxcb
 
 default: CFLAGS += -O3
 default:
