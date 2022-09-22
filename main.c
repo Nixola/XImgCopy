@@ -8,7 +8,8 @@ enum error {
     ERR_USAGE = -1,
     ERR_ALLOC = -2,
     ERR_READ = -3,
-    ERR_OWN = -4
+    ERR_OWN = -4,
+    ERR_EVENT = -5
 };
 
 enum atom {
@@ -32,9 +33,9 @@ struct chunk {
 struct chunk*
 alloc_chunk(size_t size)
 {
-    struct chunk *chunk = malloc(sizeof(struct chunk));
+    struct chunk *chunk = calloc(1, sizeof(struct chunk));
     if (chunk == NULL) return NULL;
-    chunk->data = malloc(size);
+    chunk->data = calloc(1, size);
     if (chunk->data == NULL) return NULL;
     return chunk;
 }
@@ -129,13 +130,22 @@ send_incr(xcb_connection_t *connection, xcb_selection_request_event_t *request, 
     xcb_change_property(connection, XCB_PROP_MODE_REPLACE, request->requestor,
         request->property, atoms[ATOM_INCR],
         32,
-        0, 0);
+        1, bytes);
+    uint32_t mask = XCB_EVENT_MASK_PROPERTY_CHANGE;
+    xcb_change_window_attributes(connection, request->requestor, XCB_CW_EVENT_MASK, &mask);
+}
+
+void stop_incr(xcb_connection_t *connection, xcb_property_notify_event_t *notify)
+{
+    xcb_change_property(connection, XCB_PROP_MODE_REPLACE, notify->window, notify->atom, atoms[ATOM_IMAGE_PNG], 8, 0, 0);
+    xcb_change_window_attributes(connection, notify->window, 0, 0);
+
 }
 
 void
-send_chunk(xcb_connection_t *connection, xcb_selection_request_event_t *request, struct chunk *chunk)
+send_chunk(xcb_connection_t *connection, xcb_property_notify_event_t *notify, struct chunk *chunk)
 {
-
+    xcb_change_property(connection, XCB_PROP_MODE_REPLACE, notify->window, notify->atom, atoms[ATOM_IMAGE_PNG], 8, chunk->size, chunk->data);
 }
 
 int
@@ -150,7 +160,7 @@ main(int argc, char **argv)
 	/* Open the connection to the X server */
     xcb_connection_t *connection = xcb_connect (NULL, NULL);
 
-    size_t chunk_size = xcb_get_maximum_request_length(connection)*4;
+    size_t chunk_size = xcb_get_maximum_request_length(connection);
     uint32_t bytes = 0;
     struct chunk *const data = alloc_chunk(chunk_size);
     if (data == NULL) return ERR_ALLOC;
@@ -169,6 +179,7 @@ main(int argc, char **argv)
         }
         data_head = data_head->next;
     }
+    data_head = data;
     xcb_window_t window = create_window(connection);
 
     init_atoms(connection);
@@ -181,8 +192,8 @@ main(int argc, char **argv)
     }
 
     xcb_generic_event_t *event;
+    int incr = 0;
     while ( (event = xcb_wait_for_event (connection)) ) {
-    	printf("Event received\n");
         switch (event->response_type & ~0x80) {
         case XCB_DESTROY_NOTIFY: {
             xcb_destroy_notify_event_t *evt = (xcb_destroy_notify_event_t *)event;
@@ -217,16 +228,14 @@ main(int argc, char **argv)
 
         	if (target == atoms[ATOM_TARGETS]) {
         		send_targets(connection, request);
-        		printf("TARGETS\n");
         	} else if (target == atoms[ATOM_UTF8_STRING]) {
         		send_text(connection, request, text);
         	} else if (target == atoms[ATOM_IMAGE_PNG]) {
-                printf("IMG\n");
         		// Send INCR; you have to handle this whole thing now, I hope you're happy
         		// TODO: do it
                 send_incr(connection, request, &bytes);
+                incr = 1;
         	} else {
-                printf("UNKN\n");
         		// Heck if I know what you want; explicitly refuse
         		reply.property = XCB_ATOM_NONE;
         	}
@@ -235,11 +244,22 @@ main(int argc, char **argv)
             break;
         }
         case XCB_PROPERTY_NOTIFY: {
-            printf("PROPERTY NOTIFY\n");
+            xcb_property_notify_event_t *notify = (xcb_property_notify_event_t *) event;
+            if (notify->state != XCB_PROPERTY_DELETE) break;
+            if (incr == 0) break;
+            if (data_head == NULL) {
+                stop_incr(connection, notify);
+                xcb_flush(connection);
+                data_head = data;
+                incr = 0;
+                break;
+            }
+            send_chunk(connection, notify, data_head);
+            xcb_flush(connection);
+            data_head = data_head->next;
             break;
         }
         default:
-            printf("UNKNOWN EVENT\n");
             // Don't know, don't care
             break;
         }
@@ -247,5 +267,5 @@ main(int argc, char **argv)
         free (event);
     }
 
-	return 0;
+	return ERR_EVENT;
 }
